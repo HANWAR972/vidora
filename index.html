@@ -1,1 +1,222 @@
 
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDORA - Watch Videos</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif}
+header{height:62px;background:#181818;display:flex;align-items:center;justify-content:space-between;padding:0 15px;position:sticky;top:0;z-index:5;border-bottom:1px solid #292929}
+.logo{font-size:25px;font-weight:bold;color:#ff3434}
+.logo span{color:white}
+.search{display:flex;gap:5px}
+.search input{width:100%;max-width:260px;background:#252525;border:1px solid #444;border-radius:20px;padding:10px 14px;color:white}
+button{border:0;border-radius:20px;padding:10px 15px;background:#ff3434;color:white;font-weight:bold;cursor:pointer}
+.auth button{padding:9px 12px;font-size:12px}
+nav{display:flex;gap:10px;padding:13px;overflow-x:auto;background:#181818}
+nav button{background:#303030;white-space:nowrap}
+nav button.active{background:#ff3434}
+main{padding:16px;max-width:1200px;margin:auto}
+h2{font-size:19px}
+#videos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px}
+.video{background:#1c1c1c;border-radius:12px;overflow:hidden;cursor:pointer}
+.video img{width:100%;aspect-ratio:16/9;object-fit:cover;background:#333}
+.video h3{font-size:15px;margin:10px 12px 5px}
+.video p{font-size:12px;color:#aaa;margin:5px 12px 13px}
+#player{display:none;margin-bottom:25px}
+#player video{width:100%;max-height:65vh;background:black;border-radius:10px}
+#player h2{margin-bottom:5px}
+#message{color:#aaa;text-align:center;padding:30px}
+.modal{display:none;position:fixed;inset:0;background:#000c;z-index:10;align-items:center;justify-content:center;padding:15px}
+.modal-box{background:#202020;padding:22px;border-radius:14px;width:100%;max-width:360px}
+.modal-box input{width:100%;padding:12px;margin:8px 0;background:#333;border:1px solid #555;border-radius:8px;color:white}
+.modal-box button{margin:6px 3px}
+.close{float:right;background:#444}
+footer{text-align:center;color:#777;padding:30px;font-size:12px}
+@media(max-width:480px){header{padding:0 9px}.logo{font-size:21px}.search input{max-width:125px;padding:9px}.auth button{padding:8px;font-size:11px}main{padding:12px}#videos{grid-template-columns:1fr;gap:15px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">▶ <span>VIDORA</span></div>
+  <div class="search">
+    <input id="search" placeholder="Search videos..." oninput="filterVideos()">
+  </div>
+  <div class="auth">
+    <button onclick="openAuth()">Login</button>
+  </div>
+</header>
+
+<nav>
+  <button class="active" onclick="showAll(this)">All Videos</button>
+  <button onclick="showAll(this)">Latest</button>
+  <button onclick="showAll(this)">Shorts</button>
+</nav>
+
+<main>
+  <section id="player">
+    <video id="mainVideo" controls playsinline></video>
+    <h2 id="videoTitle"></h2>
+    <p id="videoDescription" style="color:#aaa"></p>
+    <button onclick="closePlayer()">Back to videos</button>
+  </section>
+
+  <h2>Explore Videos</h2>
+  <div id="videos">
+    <p id="message">Loading videos...</p>
+  </div>
+</main>
+
+<div class="modal" id="authModal">
+  <div class="modal-box">
+    <button class="close" onclick="closeAuth()">Close</button>
+    <h2 id="authTitle">Login to VIDORA</h2>
+    <input id="email" type="email" placeholder="Email address">
+    <input id="password" type="password" placeholder="Password">
+    <button onclick="login()">Login</button>
+    <button onclick="signup()">Register</button>
+    <p id="authMessage" style="color:#aaa;font-size:13px"></p>
+  </div>
+</div>
+
+<footer>© 2026 VIDORA. All rights reserved.</footer>
+
+<script>
+const SUPABASE_URL = "https://wghdsjkhjlnztoszarlm.supabase.co";
+
+// এখানে Supabase-এর Publishable (anon) key বসাবেন।
+const SUPABASE_KEY = "PASTE_YOUR_SUPABASE_PUBLISHABLE_KEY_HERE";
+
+let db = null;
+let allVideos = [];
+
+if (window.supabase && SUPABASE_KEY.startsWith("eyJ")) {
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  loadVideos();
+} else {
+  document.getElementById("message").textContent =
+    "Supabase connection key এখনো বসানো হয়নি।";
+}
+
+async function loadVideos() {
+  const box = document.getElementById("videos");
+  box.innerHTML = '<p id="message">Loading videos...</p>';
+
+  const {data, error} = await db
+    .from("videos")
+    .select("id,title,description,video_url,thumbnail_url,views,created_at")
+    .eq("visibility","public")
+    .eq("status","published")
+    .order("created_at",{ascending:false});
+
+  if(error) {
+    box.innerHTML = '<p id="message">ভিডিও লোড হয়নি: '+escapeHTML(error.message)+'</p>';
+    return;
+  }
+
+  allVideos = data || [];
+  renderVideos(allVideos);
+}
+
+function escapeHTML(value) {
+  return String(value || "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+
+function renderVideos(list) {
+  const box = document.getElementById("videos");
+  box.innerHTML = "";
+
+  if(!list.length) {
+    box.innerHTML = '<p id="message">এখনো কোনো প্রকাশিত ভিডিও পাওয়া যায়নি।</p>';
+    return;
+  }
+
+  list.forEach(v => {
+    const card = document.createElement("article");
+    card.className = "video";
+    const img = document.createElement("img");
+    img.src = v.thumbnail_url || "";
+    img.alt = v.title || "Video thumbnail";
+    img.onerror = () => {img.style.display="none";};
+    const title = document.createElement("h3");
+    title.textContent = v.title || "Untitled video";
+    const desc = document.createElement("p");
+    desc.textContent = (v.views || 0) + " views";
+    card.append(img,title,desc);
+    card.onclick = () => playVideo(v);
+    box.appendChild(card);
+  });
+}
+
+function filterVideos() {
+  const q = document.getElementById("search").value.toLowerCase();
+  renderVideos(allVideos.filter(v =>
+    (v.title || "").toLowerCase().includes(q) ||
+    (v.description || "").toLowerCase().includes(q)
+  ));
+}
+
+function playVideo(v) {
+  const player = document.getElementById("player");
+  const video = document.getElementById("mainVideo");
+  video.src = v.video_url;
+  document.getElementById("videoTitle").textContent = v.title || "";
+  document.getElementById("videoDescription").textContent = v.description || "";
+  player.style.display = "block";
+  player.scrollIntoView({behavior:"smooth"});
+  video.play().catch(()=>{});
+}
+
+function closePlayer() {
+  const video = document.getElementById("mainVideo");
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+  document.getElementById("player").style.display = "none";
+}
+
+function showAll(btn) {
+  document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  renderVideos(allVideos);
+}
+
+function openAuth() {
+  document.getElementById("authModal").style.display="flex";
+}
+function closeAuth() {
+  document.getElementById("authModal").style.display="none";
+}
+
+async function login() {
+  if(!db) return authError();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const {error} = await db.auth.signInWithPassword({email,password});
+  document.getElementById("authMessage").textContent =
+    error ? error.message : "Login successful!";
+}
+
+async function signup() {
+  if(!db) return authError();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+  const {error} = await db.auth.signUp({email,password});
+  document.getElementById("authMessage").textContent =
+    error ? error.message : "Registration request successful. Email check করুন।";
+}
+
+function authError() {
+  document.getElementById("authMessage").textContent =
+    "আগে Supabase Publishable Key বসাতে হবে।";
+}
+</script>
+</body>
+</html>
