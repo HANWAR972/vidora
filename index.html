@@ -92,10 +92,17 @@ const SUPABASE_URL = "https://wghdsjkhjlnztoszarlm.supabase.co";
 // এখানে Supabase-এর Publishable (anon) key বসাবেন।
 const SUPABASE_KEY = "sb_publishable_nIZFeCI-6InFs6mWYcF67w_xab37JFS";
 
+
 let db = null;
 let allVideos = [];
 
-if (window.supabase && SUPABASE_KEY.startsWith("eyJ")) {
+if (
+  window.supabase &&
+  (
+    SUPABASE_KEY.startsWith("sb_publishable_") ||
+    SUPABASE_KEY.startsWith("eyJ")
+  )
+) {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   loadVideos();
 } else {
